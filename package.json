@@ -1,0 +1,24 @@
+{
+  "name": "rental_ps_be",
+  "version": "1.0.0",
+  "description": "WELLL",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "node src/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RaflyFA/rental_ps_be.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/RaflyFA/rental_ps_be/issues"
+  },
+  "homepage": "https://github.com/RaflyFA/rental_ps_be#readme",
+  "dependencies": {
+    "express": "^5.1.0"
+  },
+  "type": "module"
+}
