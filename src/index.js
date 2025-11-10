@@ -1,6 +1,6 @@
 import express from 'express';
 import mainRouter from './route/mainpage.js'
-
+console.log("termul");
 const app = express();
 const port = 3000
 
