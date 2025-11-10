@@ -23,3 +23,6 @@ console.log('ZUKOWI ');
 console.log('ANT TAKE ANT TAKE ASH ING ');
 
 console.log("Raffli Racing");
+
+console.log('aku anak mamah');
+console.log('infokan ayam, lmpses');
