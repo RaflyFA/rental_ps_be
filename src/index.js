@@ -18,3 +18,6 @@ app.listen(port, () => {
 console.log("Neng Fenri");
 
 console.log('giodppp');
+console.log('rewas ');
+console.log('ZUKOWI ');
+console.log('ANT TAKE ANT TAKE ASH ING ');
