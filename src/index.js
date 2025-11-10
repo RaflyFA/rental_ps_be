@@ -4,7 +4,7 @@ console.log("OJAN ANAK ILANG");
 console.log("JOKOWI PAHLAWAN NASIONAL");
 const app = express();
 const port = 3000
-
+console.log('termul 2');
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
