@@ -1,6 +1,7 @@
 import express from 'express';
 import mainRouter from './route/mainpage.js'
 console.log("OJAN ANAK ILANG");
+console.log("JOKOWI PAHLAWAN NASIONAL");
 const app = express();
 const port = 3000
 
