@@ -1,27 +1,39 @@
+import 'dotenv/config';
 import express from 'express';
-import mainRouter from './route/mainpage.js'
-console.log("OJAN ANAK ILANG");
-console.log("JOKOWI PAHLAWAN NASIONAL");
-const app = express();
-const port = 3000
-console.log('termul 2');
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import mainRouter from './route/mainpage.js';
+import membershipRouter from './route/membership.route.js';
+import authRouter from './route/auth.route.js';
+import { sessionMiddleware } from './config/session.js';
 
+const app = express();
+const port = 3000;
+const allowedOrigins =
+  process.env.FRONTEND_URL?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? [];
+const allowAllOrigins = allowedOrigins.length === 0;
+const corsOptions = {
+  origin(origin, callback) {
+    if (allowAllOrigins || !origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+app.use(sessionMiddleware);
 
-app.use('/',  mainRouter);
-console.log('test');
+app.use('/', mainRouter);
+app.use('/membership', membershipRouter);
+app.use('/auth', authRouter);
+
 app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`)
-})
-
-console.log("Neng Fenri");
-
-console.log('giodppp');
-console.log('rewas ');
-console.log('ZUKOWI ');
-console.log('ANT TAKE ANT TAKE ASH ING ');
+  console.log(`SERVER BERJALAN DI PORT :  ${port}`);
+});
 
 
-console.log('aku anak mamah');
-console.log('infokan ayam, lmpses');

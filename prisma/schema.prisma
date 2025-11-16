@@ -1,0 +1,140 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Membership {
+  id_membership Int        @id @default(autoincrement())
+  nama_tier     String     @db.VarChar(255)
+  diskon_persen Int?
+  poin_bonus    Int?
+  customer      customer[]
+
+  @@map("membership")
+}
+
+model customer {
+  id_customer   Int           @id @default(autoincrement())
+  no_hp         String?       @db.VarChar(255)
+  membership_id Int
+  nama          String        @db.VarChar(255)
+  membership    Membership    @relation(fields: [membership_id], references: [id_membership], onDelete: NoAction, onUpdate: NoAction, map: "customer_ibfk_1")
+  reservation   reservation[]
+
+  @@index([membership_id], map: "membership_id")
+}
+
+model food_list {
+  id_food      Int          @id @default(autoincrement())
+  nama_makanan String       @db.VarChar(255)
+  harga        Decimal      @db.Decimal(10, 2)
+  order_food   order_food[]
+}
+
+model game_list {
+  id_game   Int    @id @default(autoincrement())
+  nama_game String @db.VarChar(255)
+  id_unit   Int
+  unit      unit   @relation(fields: [id_unit], references: [id_unit], onDelete: NoAction, onUpdate: NoAction, map: "game_list_ibfk_1")
+
+  @@index([id_unit], map: "id_unit")
+}
+
+model order_food {
+  id_order       Int         @id @default(autoincrement())
+  food_id        Int
+  jumlah         Int?
+  reservation_id Int
+  food_list      food_list   @relation(fields: [food_id], references: [id_food], onDelete: NoAction, onUpdate: NoAction, map: "order_food_ibfk_1")
+  reservation    reservation @relation(fields: [reservation_id], references: [id_reservation], onDelete: NoAction, onUpdate: NoAction, map: "order_food_ibfk_2")
+
+  @@index([food_id], map: "food_id")
+  @@index([reservation_id], map: "reservation_id")
+}
+
+model payment {
+  id_payment     Int           @id @default(autoincrement())
+  tanggal_bayar  DateTime      @db.Timestamp(0)
+  total_bayar    Decimal       @db.Decimal(10, 2)
+  payment_method String        @db.VarChar(255)
+  reservation    reservation[]
+}
+
+model price_list {
+  id_price_list Int     @id @default(autoincrement())
+  id_room       Int
+  harga_per_jam Decimal @db.Decimal(10, 2)
+  deskripsi     String? @db.Text
+  room          room    @relation(fields: [id_room], references: [id_room], onDelete: NoAction, onUpdate: NoAction, map: "price_list_ibfk_1")
+
+  @@index([id_room], map: "id_room")
+}
+
+model reservation {
+  id_reservation    Int          @id @default(autoincrement())
+  durasi            Int
+  total_harga       Decimal      @db.Decimal(10, 2)
+  customer_id       Int
+  payment_id        Int?
+  tanggal_reservasi DateTime     @db.Date
+  waktu_mulai       DateTime     @db.Timestamp(0)
+  waktu_selesai     DateTime     @db.Timestamp(0)
+  id_room           Int
+  handled_by        Int?
+  order_food        order_food[]
+  user              user?        @relation(fields: [handled_by], references: [id_user], onDelete: NoAction, onUpdate: NoAction, map: "fk_reservation_user")
+  customer          customer     @relation(fields: [customer_id], references: [id_customer], onDelete: NoAction, onUpdate: NoAction, map: "reservation_ibfk_1")
+  payment           payment?     @relation(fields: [payment_id], references: [id_payment], onDelete: Cascade, onUpdate: NoAction, map: "reservation_ibfk_2")
+  room              room         @relation(fields: [id_room], references: [id_room], onDelete: NoAction, onUpdate: NoAction, map: "reservation_ibfk_3")
+
+  @@index([customer_id], map: "customer_id")
+  @@index([handled_by], map: "fk_reservation_user")
+  @@index([id_room], map: "id_room")
+  @@index([payment_id], map: "reservation_ibfk_2")
+}
+
+model room {
+  id_room     Int            @id @default(autoincrement())
+  nama_room   String         @db.VarChar(255)
+  tipe_room   room_tipe_room
+  kapasitas   Int
+  price_list  price_list[]
+  reservation reservation[]
+  unit        unit[]
+}
+
+model unit {
+  id_unit   Int         @id @default(autoincrement())
+  id_room   Int
+  deskripsi String?     @db.Text
+  nama_unit String?     @db.VarChar(255)
+  game_list game_list[]
+  room      room        @relation(fields: [id_room], references: [id_room], onDelete: NoAction, onUpdate: NoAction, map: "unit_ibfk_1")
+
+  @@index([id_room], map: "id_room")
+}
+
+model user {
+  id_user       Int           @id @default(autoincrement())
+  username      String        @unique(map: "username") @db.VarChar(50)
+  email         String?       @db.VarChar(255)
+  password_hash String        @db.VarChar(255)
+  role          user_role     @default(staff)
+  created_at    DateTime      @default(now()) @db.Timestamp(0)
+  updated_at    DateTime?     @db.Timestamp(0)
+  reservation   reservation[]
+}
+
+enum room_tipe_room {
+  vip
+  reguler
+}
+
+enum user_role {
+  admin
+  staff
+}
