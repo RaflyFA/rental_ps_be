@@ -1,9 +1,30 @@
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 
+const {
+  DATABASE_URL,
+  USER_DB,
+  PASSWORD_DB,
+  DB_URL,
+  DB_NAME,
+} = process.env;
+
+const credentials = (() => {
+  if (USER_DB && PASSWORD_DB) {
+    return `${USER_DB}:${PASSWORD_DB}`;
+  }
+
+  if (USER_DB) {
+    return USER_DB;
+  }
+
+  return "";
+})();
+
+const authSegment = credentials ? `${credentials}@` : "";
+
 const databaseUrl =
-  process.env.DATABASE_URL ??
-  `mysql://${process.env.USER_DB}:${process.env.PASSWORD_DB}@${process.env.DB_URL}/${process.env.DB_NAME}`;
+  DATABASE_URL ?? `mysql://${authSegment}${DB_URL}/${DB_NAME}`;
 
 const prisma = new PrismaClient({
   datasources: {
