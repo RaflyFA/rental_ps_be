@@ -4,7 +4,7 @@ import {
   createFood,
   updateFood,
   deleteFood,
-} from '../controller/foodlist/food_list.controller.js'
+} from '../controller/food/food_list.controller.js'
 
 const router = express.Router();
 
