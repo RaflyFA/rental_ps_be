@@ -28,12 +28,14 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(sessionMiddleware);
 
-app.use('/', mainRouter);
-app.use('/membership', membershipRouter);
-app.use('/auth', authRouter);
+const apiRouter = express.Router();
+apiRouter.use('/', mainRouter);
+apiRouter.use('/membership', membershipRouter);
+apiRouter.use('/auth', authRouter);
+
+app.use('/api', apiRouter);
 
 app.listen(port, () => {
   console.log(`SERVER BERJALAN DI PORT :  ${port}`);
 });
-
 
