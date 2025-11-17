@@ -4,6 +4,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import mainRouter from './route/mainpage.js';
 import membershipRouter from './route/membership.route.js';
+import foodlistRouter from './route/food_list.route.js';
 import authRouter from './route/auth.route.js';
 import { sessionMiddleware } from './config/session.js';
 
@@ -29,6 +30,7 @@ app.use(cookieParser());
 app.use(sessionMiddleware);
 
 app.use('/', mainRouter);
+app.use('/foods', foodlistRouter);
 app.use('/membership', membershipRouter);
 app.use('/auth', authRouter);
 
