@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import mainRouter from './route/mainpage.js';
+import reservationRouter from './route/reservation.route.js';
 import membershipRouter from './route/membership.route.js';
 import foodListRouter from './route/food_list.route.js';
 import orderFoodRouter from './route/order_food.route.js';
@@ -32,6 +33,7 @@ app.use(sessionMiddleware);
 
 const apiRouter = express.Router();
 apiRouter.use('/', mainRouter);
+apiRouter.use('/reservation', reservationRouter);
 apiRouter.use('/membership', membershipRouter);
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/foods', foodListRouter);
