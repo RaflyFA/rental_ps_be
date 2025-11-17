@@ -1,9 +1,30 @@
 import "dotenv/config";
-import { defineConfig, env } from "prisma/config";
+import { defineConfig } from "prisma/config";
+
+const {
+  DATABASE_URL,
+  USER_DB,
+  PASSWORD_DB,
+  DB_URL = "localhost:3306",
+  DB_NAME = "rental_ps",
+} = process.env;
+
+const credentials = (() => {
+  if (USER_DB && PASSWORD_DB) {
+    return `${USER_DB}:${PASSWORD_DB}`;
+  }
+
+  if (USER_DB) {
+    return USER_DB;
+  }
+
+  return "";
+})();
+
+const authSegment = credentials ? `${credentials}@` : "";
 
 const databaseUrl =
-  process.env.DATABASE_URL ??
-  `mysql://${env("USER_DB")}:${env("PASSWORD_DB")}@${env("DB_URL")}/${env("DB_NAME")}`;
+  DATABASE_URL ?? `mysql://${authSegment}${DB_URL}/${DB_NAME}`;
 
 process.env.DATABASE_URL = databaseUrl;
 
