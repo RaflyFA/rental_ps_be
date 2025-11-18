@@ -1,5 +1,70 @@
 import prisma from '../../config/prisma.js';
 
+const defaultPrice = `7000`
+
+function shapeReservation(record) {
+  if (!record) return null;
+
+  return {
+    id_reservation: record.id_reservation,
+    customer_id: record.customer_id ?? null,
+    id_room: record.id_room,
+    customer_name: record.customer?.nama ?? null,
+    nama_room: record.room?.nama_room ?? null,
+
+    waktu_mulai: record.waktu_mulai,
+    waktu_selesai: record.waktu_selesai,
+    durasi: record.durasi,
+    total_harga: record.total_harga,
+    payment_status: record.payment_status ?? null,
+    payment_method: record.payment_method ?? null,
+  };
+}
+function shapeOrderFood(row) {
+  return {
+    id_order: row.id_order,
+    reservation_id: row.reservation_id,
+    food_id: row.food_id,
+    jumlah: row.jumlah,
+    food: row.food_list
+      ? {
+          id_food: row.food_list.id_food,
+          nama_makanan: row.food_list.nama_makanan,
+          harga: row.food_list.harga,
+        }
+      : null,
+  };
+}
+
+// ### FUNCTION ###
+export async function listReservations(req, res) {
+  try {
+    const { date } = req.query;
+    const where = {};
+    if (date) {
+      const start = new Date(`${date}T00:00:00`);
+      const end = new Date(`${date}T23:59:59.999`);
+      where.waktu_mulai = {
+        gte: start,
+        lte: end,
+      };
+    }
+    const records = await prisma.reservation.findMany({
+      where,
+      include: {
+        customer: { select: { nama: true } },
+        room: { select: { nama_room: true } },
+      },
+      orderBy: [
+        { waktu_mulai: 'asc' },
+        { id_reservation: 'asc' },
+      ],
+    });
+    res.json(records.map(shapeReservation));
+  } catch (error) {
+    console.error('Failed to list reservations', error);
+    res.status(500).json({ message: 'Failed to list reservations' });
+}}
 export async function getReservationDetail(req, res) {
   try {
     const id = Number(req.params.id);
@@ -16,75 +81,130 @@ export async function getReservationDetail(req, res) {
     if (!record) {
       return res.status(404).json({ message: 'Reservation not found' });
     }
-    res.json({
-      id_reservation: record.id_reservation,
-      customer_name: record.customer?.nama ?? null,
-      nama_room: record.room?.nama_room ?? null,
-      waktu_mulai: record.waktu_mulai,
-      waktu_selesai: record.waktu_selesai,
-      durasi: record.durasi,
-      total_harga: record.total_harga,
-      payment_status: record.payment_status ?? null,
-      payment_method: record.payment_method ?? null,
-    });
+    res.json(shapeReservation(record));
   } catch (error) {
     console.error('Failed to fetch reservation detail', error);
     res.status(500).json({ message: 'Failed to fetch reservation detail' });
-  }
-}
-export async function listReservations(req, res) {
+}}
+export async function getReservationWithOrders(req, res) {
   try {
-    const records = await prisma.reservation.findMany({
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) {
+      return res.status(400).json({ message: 'Invalid reservation id' });
+    }
+    const record = await prisma.reservation.findUnique({
+      where: { id_reservation: id },
       include: {
         customer: { select: { nama: true } },
         room: { select: { nama_room: true } },
+        order_food: {
+          include: {
+            food_list: true,
+          },
+        },
       },
-      orderBy: { waktu_mulai: 'asc' },
     });
-
-    const data = records.map((r) => ({
-      id_reservation: r.id_reservation,
-      customer_name: r.customer?.nama ?? null,
-      nama_room: r.room?.nama_room ?? null,
-      waktu_mulai: r.waktu_mulai,
-      waktu_selesai: r.waktu_selesai,
-      durasi: r.durasi,
-      total_harga: r.total_harga,
-      payment_status: r.payment_status,
-      payment_method: r.payment_method,
-    }));
-
-    res.json(data);
+    if (!record) {
+      return res.status(404).json({ message: 'Reservation not found' });
+    }
+    const shaped = shapeReservation(record);
+    const orders = (record.order_food || []).map(shapeOrderFood);
+    res.json({
+      ...shaped,
+      orders,
+    });
   } catch (error) {
-    console.error('Failed to list reservations', error);
-    res.status(500).json({ message: 'Failed to list reservations' });
+    console.error('Failed to fetch reservation with orders', error);
+    res.status(500).json({ message: 'Failed to fetch reservation with orders' });
+}}
+function buildDateTime(dateStr, timeStr) {
+  return new Date(`${dateStr}T${timeStr}:00`);
+}
+async function resolveCustomerId({ customer_id, customer_name }) {
+  let cid = customer_id ? Number(customer_id) : null;
+  if (Number.isFinite(cid)) return cid;
+  if (customer_name) {
+    let customer = await prisma.customer.findFirst({
+      where: { nama: customer_name },
+    });
+    if (!customer) {
+      customer = await prisma.customer.create({
+        data: { nama: customer_name },
+      });
+    }
+    return customer.id_customer;
   }
+  return null;
+}
+async function resolveRoomId({ room_id, nama_room }) {
+  let rid = room_id ? Number(room_id) : null;
+  if (Number.isFinite(rid)) return rid;
+
+  if (nama_room) {
+    const room = await prisma.room.findFirst({
+      where: { nama_room },
+    });
+    if (!room) {
+      throw new Error(`ROOM_NOT_FOUND:${nama_room}`);
+    }
+    return room.id_room;
+  }
+
+  throw new Error('ROOM_REQUIRED');
+}
+async function getPricePerHourForRoom(roomId) {
+  const priceRow = await prisma.price_list.findFirst({
+    where: { id_room: roomId },
+  });
+  if (!priceRow) {
+    return defaultPrice;
+  }
+  return Number(priceRow.harga_per_jam);
 }
 export async function createReservation(req, res) {
   try {
     const {
+      customer_id,
       customer_name,
+      room_id,
       nama_room,
-      date,    // "YYYY-MM-DD"
-      time,    // "HH:mm"
+      date,
+      time,
       duration,
       payment_method,
     } = req.body;
 
+    if (!date || !time) {
+      return res
+        .status(400)
+        .json({ message: 'date dan time wajib diisi (YYYY-MM-DD & HH:mm)' });
+    }
     const durasiJam = Number(duration) || 1;
-
-    // Bangun Date dari date + time
-    const start = new Date(`${date}T${time}:00.000Z`);
+    const cid = await resolveCustomerId({ customer_id, customer_name });
+    let rid;
+    try {
+      rid = await resolveRoomId({ room_id, nama_room });
+    } catch (error) {
+      if (error.message.startsWith('ROOM_NOT_FOUND:')) {
+        const roomName = error.message.split(':')[1];
+        return res
+          .status(400)
+          .json({ message: `Ruangan dengan nama "${roomName}" tidak ditemukan` });
+      }
+      if (error.message === 'ROOM_REQUIRED') {
+        return res
+          .status(400)
+          .json({ message: 'room_id atau nama_room wajib diisi dan valid' });
+      }
+      throw error;
+    }
+    const start = buildDateTime(date, time);
     const end = new Date(start.getTime() + durasiJam * 60 * 60 * 1000);
-
-    const pricePerHour = 7000; // kalau bisa taruh di config
-
-    // TODO: kalau di schema kamu pakai id_customer & id_room,
-    // di sini harus mapping dari customer_name & nama_room ke id-nya
+    const pricePerHour = await getPricePerHourForRoom(rid);
     const record = await prisma.reservation.create({
       data: {
-        // id_customer: ...
-        // id_room: ...
+        customer_id: cid,
+        id_room: rid,
         waktu_mulai: start,
         waktu_selesai: end,
         durasi: durasiJam,
@@ -97,20 +217,99 @@ export async function createReservation(req, res) {
         room: { select: { nama_room: true } },
       },
     });
-
-    res.status(201).json({
-      id_reservation: record.id_reservation,
-      customer_name: record.customer?.nama ?? customer_name ?? null,
-      nama_room: record.room?.nama_room ?? nama_room ?? null,
-      waktu_mulai: record.waktu_mulai,
-      waktu_selesai: record.waktu_selesai,
-      durasi: record.durasi,
-      total_harga: record.total_harga,
-      payment_status: record.payment_status,
-      payment_method: record.payment_method,
-    });
+    res.status(201).json(shapeReservation(record));
   } catch (error) {
     console.error('Failed to create reservation', error);
+    if (error.message?.startsWith?.('ROOM_')) {
+      return res.status(400).json({ message: error.message });
+    }
     res.status(500).json({ message: 'Failed to create reservation' });
   }
 }
+export async function updateReservation(req, res) {
+  try {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) {
+      return res.status(400).json({ message: 'Invalid reservation id' });
+    }
+    const {
+      customer_id,
+      customer_name,
+      room_id,
+      nama_room,
+      date,
+      time,
+      duration,
+      payment_method,
+      payment_status,
+    } = req.body;
+    if (!date || !time) {
+      return res
+        .status(400)
+        .json({ message: 'date dan time wajib diisi (YYYY-MM-DD & HH:mm)' });
+    }
+    const durasiJam = Number(duration) || 1;
+    const cid = await resolveCustomerId({ customer_id, customer_name });
+    let rid;
+    try {
+      rid = await resolveRoomId({ room_id, nama_room });
+    } catch (error) {
+      if (error.message.startsWith('ROOM_NOT_FOUND:')) {
+        const roomName = error.message.split(':')[1];
+        return res
+          .status(400)
+          .json({ message: `Ruangan dengan nama "${roomName}" tidak ditemukan` });
+      }
+      if (error.message === 'ROOM_REQUIRED') {
+        return res
+          .status(400)
+          .json({ message: 'room_id atau nama_room wajib diisi dan valid' });
+      }
+      throw error;
+    }
+    const start = buildDateTime(date, time);
+    const end = new Date(start.getTime() + durasiJam * 60 * 60 * 1000);
+    const pricePerHour = await getPricePerHourForRoom(rid);
+    const record = await prisma.reservation.update({
+      where: { id_reservation: id },
+      data: {
+        customer_id: cid,
+        id_room: rid,
+        waktu_mulai: start,
+        waktu_selesai: end,
+        durasi: durasiJam,
+        total_harga: durasiJam * pricePerHour,
+        payment_status: payment_status ?? undefined,
+        payment_method: payment_method ?? undefined,
+      },
+      include: {
+        customer: { select: { nama: true } },
+        room: { select: { nama_room: true } },
+      },
+    });
+    res.json(shapeReservation(record));
+  } catch (error) {
+    console.error('Failed to update reservation', error);
+    if (error.code === 'P2025') {
+      return res.status(404).json({ message: 'Reservation not found' });
+    }
+    res.status(500).json({ message: 'Failed to update reservation' });
+  }
+}
+export async function deleteReservation(req, res) {
+  try {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) {
+      return res.status(400).json({ message: 'Invalid reservation id' });
+    }
+    await prisma.reservation.delete({
+      where: { id_reservation: id },
+    });
+    res.json({ message: 'Reservation deleted' });
+  } catch (error) {
+    console.error('Failed to delete reservation', error);
+    if (error.code === 'P2025') {
+      return res.status(404).json({ message: 'Reservation not found' });
+    }
+    res.status(500).json({ message: 'Failed to delete reservation' });
+}}

@@ -35,7 +35,7 @@ app.use(sessionMiddleware);
 
 const apiRouter = express.Router();
 apiRouter.use('/', mainRouter);
-apiRouter.use('/reservation', reservationRouter);
+apiRouter.use('/reservations', reservationRouter);
 apiRouter.use('/membership', membershipRouter);
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/foods', foodListRouter);
