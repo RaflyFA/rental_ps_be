@@ -84,15 +84,12 @@ model reservation {
   waktu_mulai       DateTime     @db.Timestamp(0)
   waktu_selesai     DateTime     @db.Timestamp(0)
   id_room           Int
-  handled_by        Int?
   order_food        order_food[]
-  user              user?        @relation(fields: [handled_by], references: [id_user], onDelete: NoAction, onUpdate: NoAction, map: "fk_reservation_user")
   customer          customer     @relation(fields: [customer_id], references: [id_customer], onDelete: NoAction, onUpdate: NoAction, map: "reservation_ibfk_1")
   payment           payment?     @relation(fields: [payment_id], references: [id_payment], onDelete: Cascade, onUpdate: NoAction, map: "reservation_ibfk_2")
   room              room         @relation(fields: [id_room], references: [id_room], onDelete: NoAction, onUpdate: NoAction, map: "reservation_ibfk_3")
 
   @@index([customer_id], map: "customer_id")
-  @@index([handled_by], map: "fk_reservation_user")
   @@index([id_room], map: "id_room")
   @@index([payment_id], map: "reservation_ibfk_2")
 }
@@ -119,14 +116,19 @@ model unit {
 }
 
 model user {
-  id_user       Int           @id @default(autoincrement())
-  username      String        @unique(map: "username") @db.VarChar(50)
-  email         String?       @db.VarChar(255)
-  password_hash String        @db.VarChar(255)
-  role          user_role     @default(staff)
-  created_at    DateTime      @default(now()) @db.Timestamp(0)
-  updated_at    DateTime?     @db.Timestamp(0)
-  reservation   reservation[]
+  id_user       Int       @id @default(autoincrement())
+  username      String    @unique(map: "username") @db.VarChar(50)
+  email         String?   @db.VarChar(255)
+  password_hash String    @db.VarChar(255)
+  role          user_role @default(staff)
+  created_at    DateTime  @default(now()) @db.Timestamp(0)
+  updated_at    DateTime? @db.Timestamp(0)
+}
+
+model sessions {
+  session_id String  @id @db.VarChar(128)
+  expires    Int     @db.UnsignedInt
+  data       String? @db.MediumText
 }
 
 enum room_tipe_room {

@@ -4,6 +4,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import mainRouter from './route/mainpage.js';
 import membershipRouter from './route/membership.route.js';
+import roomRouter from './route/room.route.js';
 import authRouter from './route/auth.route.js';
 import { sessionMiddleware } from './config/session.js';
 
@@ -31,6 +32,7 @@ app.use(sessionMiddleware);
 const apiRouter = express.Router();
 apiRouter.use('/', mainRouter);
 apiRouter.use('/membership', membershipRouter);
+apiRouter.use('/room', roomRouter);
 apiRouter.use('/auth', authRouter);
 
 app.use('/api', apiRouter);
