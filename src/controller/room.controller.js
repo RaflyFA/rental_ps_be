@@ -3,10 +3,11 @@ import prisma from '../config/prisma.js';
 export async function getRooms(req, res) {
 	try {
 		const records = await prisma.room.findMany({ orderBy: { id_room: 'asc' } });
-		res.json(records);
+		
+		return res.status(200).json(records);
 	} catch (error) {
 		console.error('Failed to fetch rooms list', error);
-		res.status(500).json({ message: 'Failed to fetch rooms list' });
+		return res.status(500).json({ message: 'Failed to fetch rooms list' });
 	}
 }
 
@@ -15,10 +16,10 @@ export async function getRoomById(req, res) {
 		const id = Number(req.params.id);
 		const record = await prisma.room.findUnique({ where: { id_room: id } });
 		if (!record) return res.status(404).json({ message: 'Room not found' });
-		res.json(record);
+		return res.json(record);
 	} catch (error) {
 		console.error('Failed to fetch room detail', error);
-		res.status(500).json({ message: 'Failed to fetch room detail' });
+		return res.status(500).json({ message: 'Failed to fetch room detail' });
 	}
 }
 
@@ -43,26 +44,58 @@ export async function createRoom(req, res) {
 }
 
 export async function updateRoom(req, res) {
-	try {
-		const id = Number(req.params.id);
-		const { nama_room, tipe_room, kapasitas } = req.body;
-		const updated = await prisma.room.update({
-			where: { id_room: id },
-			data: {
-				...(nama_room !== undefined && { nama_room }),
-				...(tipe_room !== undefined && { tipe_room }),
-				kapasitas: toNullableNumber(kapasitas),
-			},
-		});
-		res.json(updated);
-	} catch (error) {
-		if (error.code === 'P2025') {
-			return res.status(404).json({ message: 'Room not found' });
-		}
-		console.error('Failed to update room', error);
-		res.status(500).json({ message: 'Failed to update room' });
-	}
+  const id = Number(req.params.id);
+  const { nama_room, tipe_room, kapasitas, harga } = req.body;
+
+  try {
+    // Cek apakah room-nya ada
+    const existingRoom = await prisma.room.findUnique({
+      where: { id_room: id },
+      include: { price_list: true },
+    });
+
+    if (!existingRoom) {
+      return res.status(404).json({ message: "Room not found" });
+    }
+
+    // Update / create price_list
+    const existingPrice = existingRoom.price_list[0];
+    if (existingPrice) {
+      await prisma.price_list.update({
+        where: { id_price_list: existingPrice.id_price_list },
+        data: { harga_per_jam: Number(harga) },
+      });
+    } else {
+      await prisma.price_list.create({
+        data: {
+          id_room: id,
+          harga_per_jam: Number(harga),
+        },
+      });
+    }
+
+    // Update room
+    const updatedRoom = await prisma.room.update({
+      where: { id_room: id },
+      data: {
+        nama_room,
+        tipe_room,
+        kapasitas: Number(kapasitas),
+      },
+      include: { price_list: true },
+    });
+
+    res.json({
+      message: "Room updated successfully",
+      data: updatedRoom,
+    });
+  } catch (error) {
+    console.error("Failed to update room with price", error);
+    res.status(500).json({ message: "Failed to update room with price" });
+  }
 }
+
+
 
 export async function deleteRoom(req, res) {
 	try {
@@ -84,3 +117,31 @@ function toNullableNumber(value) {
 	return Number.isNaN(parsed) ? null : parsed;
 }
 
+export const getRoomsWithPrice = async (req, res) => {
+  try {
+    const rooms = await prisma.room.findMany({
+      select: {
+        id_room: true,
+        nama_room: true,
+        tipe_room: true,
+        kapasitas: true,
+        price_list: {
+          select: {
+            harga_per_jam: true,
+          },
+        },
+      },
+    });
+
+    res.status(200).json({
+      message: "Data room berhasil diambil",
+      data: rooms,
+    });
+  } catch (error) {
+    console.error("Failed to get rooms with price", error);
+    res.status(500).json({
+      message: "Terjadi kesalahan",
+      error: error.message,
+    });
+  }
+};
