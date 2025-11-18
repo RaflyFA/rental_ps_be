@@ -2,18 +2,35 @@ import prisma from '../../config/prisma.js';
 
 export async function getFoods(req, res) {
   try {
-    const foods = await prisma.food_list.findMany({
-      orderBy: { id_food: 'asc' },
-    })
-
-    const normalized = foods.map((f) => ({
-      ...f,
-      harga: Number(f.harga)
-    }))
-    res.json(normalized)
+    const page  = Math.max(1, Number(req.query.page)  || 1);   // default page 1
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 10)); // default 10 / max 100
+    const search = (req.query.search || '').trim();
+    const skip = (page - 1) * limit;
+    const where = search
+      ? { nama_makanan: { contains: search, mode: 'insensitive' } }
+      : {};
+    const [rows, total] = await Promise.all([
+      prisma.food_list.findMany({
+        where,
+        orderBy: { id_food: 'asc' },
+        skip,
+        take: limit,
+      }),
+      prisma.food_list.count({ where }),
+    ]);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    res.json({
+      data: rows,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
+    });
   } catch (error) {
-    console.error('Failed to fetch food list', error)
-    res.status(500).json({ message: 'Failed to fetch food list' })
+    console.error('Failed to fetch food list', error);
+    res.status(500).json({ message: 'Failed to fetch food list' });
   }
 }
 export async function createFood(req, res) {
