@@ -15,7 +15,8 @@ import unitRouter from './route/unit.route.js';
 import { sessionMiddleware } from './config/session.js';
 
 const app = express();
-const port = 3000;
+const PORT = process.env.PORT || 3000; // WAJIB pakai process.env.PORT
+const port = PORT;
 const allowedOrigins =
   process.env.FRONTEND_URL?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? [];
 const allowAllOrigins = allowedOrigins.length === 0;
