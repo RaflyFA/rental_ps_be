@@ -6,7 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\"",
     "dev": "nodemon src/index.js",
-    "start": "nodemon src/index.js",
+    "start": "node src/index.js",
     "build": "echo \"no build step\""
   },
   "repository": {
