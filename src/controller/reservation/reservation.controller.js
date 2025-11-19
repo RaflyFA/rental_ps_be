@@ -35,15 +35,17 @@ function shapeOrderFood(row) {
       : null,
   };
 }
-
-// ### FUNCTION ###
 export async function listReservations(req, res) {
   try {
     const { date } = req.query;
     const where = {};
     if (date) {
-      const start = new Date(`${date}T00:00:00`);
-      const end = new Date(`${date}T23:59:59.999`);
+      const normalizedDate = date.includes('T') ? date.split('T')[0] : date;
+      const start = new Date(`${normalizedDate}T00:00:00`);
+      const end = new Date(`${normalizedDate}T23:59:59.999`);
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        return res.status(400).json({ message: 'Format tanggal tidak valid (gunakan YYYY-MM-DD)' });
+      }
       where.waktu_mulai = {
         gte: start,
         lte: end,

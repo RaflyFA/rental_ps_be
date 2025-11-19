@@ -16,7 +16,7 @@ import { sessionMiddleware } from './config/session.js';
 import userRouter from './route/user.route.js';
 
 const app = express();
-const PORT = process.env.PORT || 3000; // WAJIB pakai process.env.PORT
+const PORT = process.env.PORT || 3000;
 const port = PORT;
 const allowedOrigins =
   process.env.FRONTEND_URL?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? [];
@@ -48,7 +48,7 @@ apiRouter.use('/foods', foodListRouter);
 apiRouter.use('/order-foods', orderFoodRouter);
 apiRouter.use('/games', gamesRouter);
 apiRouter.use('/unit', unitRouter);
-apiRouter.use('/user', userRouter);
+apiRouter.use('/users', userRouter);
 
 
 app.use('/api', apiRouter);
