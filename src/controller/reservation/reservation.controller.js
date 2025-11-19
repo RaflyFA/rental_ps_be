@@ -1,8 +1,10 @@
+import moment from 'moment';
 import prisma from '../../config/prisma.js';
 
 const defaultPrice = `7000`
 
 function shapeReservation(record) {
+  console.log('shapeReservation record', record);
   if (!record) return null;
 
   return {
@@ -16,8 +18,8 @@ function shapeReservation(record) {
     waktu_selesai: record.waktu_selesai,
     durasi: record.durasi,
     total_harga: record.total_harga,
-    payment_status: record.payment_status ?? null,
-    payment_method: record.payment_method ?? null,
+    payment_status: record.payment?.id_payment ? true : false,
+    payment_method: record.payment?.payment_method ?? null,
   };
 }
 function shapeOrderFood(row) {
@@ -41,21 +43,19 @@ export async function listReservations(req, res) {
     const where = {};
     if (date) {
       const normalizedDate = date.includes('T') ? date.split('T')[0] : date;
-      const start = new Date(`${normalizedDate}T00:00:00`);
+      const start = `${date}`
       const end = new Date(`${normalizedDate}T23:59:59.999`);
-      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-        return res.status(400).json({ message: 'Format tanggal tidak valid (gunakan YYYY-MM-DD)' });
-      }
-      where.waktu_mulai = {
-        gte: start,
-        lte: end,
-      };
+      // if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      //   return res.status(400).json({ message: 'Format tanggal tidak valid (gunakan YYYY-MM-DD)' });
+      // }
+      where.tanggal_reservasi = date;
     }
     const records = await prisma.reservation.findMany({
       where,
       include: {
         customer: { select: { nama: true } },
         room: { select: { nama_room: true } },
+        payment : true,
       },
       orderBy: [
         { waktu_mulai: 'asc' },
@@ -120,7 +120,15 @@ export async function getReservationWithOrders(req, res) {
     res.status(500).json({ message: 'Failed to fetch reservation with orders' });
 }}
 function buildDateTime(dateStr, timeStr) {
-  return new Date(`${dateStr}T${timeStr}:00`);
+  const dt = moment(`${dateStr} ${timeStr}`, 'YYYY-MM-DD HH:mm', true);
+  if (!dt.isValid()) {
+    throw new Error('INVALID_DATE_TIME');
+  }
+  return dt;
+}
+
+function toUTCDatePreservingLocalInput(momentObj) {
+  return new Date(momentObj.valueOf() + momentObj.utcOffset() * 60 * 1000);
 }
 async function resolveCustomerId({ customer_id, customer_name }) {
   let cid = customer_id ? Number(customer_id) : null;
@@ -200,8 +208,20 @@ export async function createReservation(req, res) {
       }
       throw error;
     }
-    const start = buildDateTime(date, time);
-    const end = new Date(start.getTime() + durasiJam * 60 * 60 * 1000);
+    let startMoment;
+    try {
+      startMoment = moment(`${date} ${time}`);
+    } catch (error) {
+      console.log('error', error)
+      return res
+        .status(400)
+        .json({ message: 'Format date/time tidak valid (YYYY-MM-DD & HH:mm)' });
+    }
+    console.log('startMoment', moment(startMoment, "YYYY-MM-DD", true).format("YYYY-MM-DD"))
+    const endMoment = startMoment.clone().add(durasiJam, 'hours');
+    const start = startMoment.format("YYYY-MM-DD HH:mm:ss");
+    const end = endMoment.format("YYYY-MM-DD HH:mm:ss");
+    console.log('start', moment(date, "YYYY-MM-DD", true).format("YYYY-MM-DD"))
     const pricePerHour = await getPricePerHourForRoom(rid);
     const record = await prisma.reservation.create({
       data: {
@@ -210,9 +230,8 @@ export async function createReservation(req, res) {
         waktu_mulai: start,
         waktu_selesai: end,
         durasi: durasiJam,
+        tanggal_reservasi : date,
         total_harga: durasiJam * pricePerHour,
-        payment_status: 'UNPAID',
-        payment_method: payment_method || 'Cash',
       },
       include: {
         customer: { select: { nama: true } },
@@ -269,8 +288,17 @@ export async function updateReservation(req, res) {
       }
       throw error;
     }
-    const start = buildDateTime(date, time);
-    const end = new Date(start.getTime() + durasiJam * 60 * 60 * 1000);
+    let startMoment;
+    try {
+      startMoment = buildDateTime(date, time);
+    } catch {
+      return res
+        .status(400)
+        .json({ message: 'Format date/time tidak valid (YYYY-MM-DD & HH:mm)' });
+    }
+    const endMoment = startMoment.clone().add(durasiJam, 'hours');
+    const start = toUTCDatePreservingLocalInput(startMoment);
+    const end = toUTCDatePreservingLocalInput(endMoment);
     const pricePerHour = await getPricePerHourForRoom(rid);
     const record = await prisma.reservation.update({
       where: { id_reservation: id },
@@ -315,3 +343,47 @@ export async function deleteReservation(req, res) {
     }
     res.status(500).json({ message: 'Failed to delete reservation' });
 }}
+
+export const payReservation = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+
+    const reservation = await prisma.reservation.findFirst({
+      where: { id_reservation: id }
+    });
+
+    if (!reservation) {
+      return res.status(404).json({ message: 'Reservation not found' });
+    }
+
+    const paymentRecord = await prisma.payment.create({
+      data: {
+        total_bayar: reservation.total_harga,
+        tanggal_bayar: moment().format("YYYY-MM-DD"), 
+        payment_method: "CASH",
+      }
+    });
+
+    const updatedReservation = await prisma.reservation.update({
+      where: {
+        id_reservation: id,
+      },
+      data: {
+        payment_id: paymentRecord.id_payment,
+      }
+    });
+
+    return res.status(201).json({
+      message: 'Payment Dibayar Lunas',
+      data: {
+        payment: paymentRecord,
+        reservation: updatedReservation
+      }
+    });
+
+  } catch (error) {
+    console.log('error', error);
+    return res.status(500).json({ message: 'Failed to process payment' });
+  }
+};
+

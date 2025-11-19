@@ -50,6 +50,24 @@ const parseMembershipId = (value) => {
 
 export async function getCustomers(req, res) {
   try {
+    const fetchAll = req.query.all === 'true';
+    if (fetchAll) {
+      const records = await prisma.customer.findMany({
+        orderBy: { id_customer: 'asc' },
+        include: customerInclude,
+      });
+      const shaped = records.map(shapeCustomer);
+      return res.json({
+        data: shaped,
+        pagination: {
+          page: 1,
+          pageSize: shaped.length,
+          totalItems: shaped.length,
+          totalPages: 1,
+          hasNextPage: false,
+        },
+      });
+    }
     const page = Math.max(1, Number.parseInt(req.query.page ?? '1', 10) || 1);
     const skip = (page - 1) * PAGE_SIZE;
     const [records, totalItems] = await Promise.all([
