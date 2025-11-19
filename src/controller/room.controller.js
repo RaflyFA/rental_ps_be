@@ -24,23 +24,31 @@ export async function getRoomById(req, res) {
 }
 
 export async function createRoom(req, res) {
-	try {
-		const { nama_room, tipe_room, kapasitas } = req.body;
-		if (!nama_room) return res.status(400).json({ message: 'nama_room is required' });
-		if (!tipe_room) return res.status(400).json({ message: 'tipe_room is required' });
+  try {
+    const { nama_room, tipe_room, kapasitas, harga } = req.body;
 
-		const newRecord = await prisma.room.create({
-			data: {
-				nama_room,
-				tipe_room,
-				kapasitas: toNullableNumber(kapasitas),
-			},
-		});
-		res.status(201).json(newRecord);
-	} catch (error) {
-		console.error('Failed to create room', error);
-		res.status(500).json({ message: 'Failed to create room' });
-	}
+    if (!nama_room) return res.status(400).json({ message: 'nama_room is required' });
+    if (!tipe_room) return res.status(400).json({ message: 'tipe_room is required' });
+
+    const newRoom = await prisma.room.create({
+      data: {
+        nama_room,
+        tipe_room,
+        kapasitas: toNullableNumber(kapasitas),
+        price_list: {
+          create: {
+            harga_per_jam: Number(harga),
+          },
+        },
+      },
+      include: { price_list: true }, // <-- pastikan include price_list
+    });
+
+    res.status(201).json(newRoom);
+  } catch (error) {
+    console.error('Failed to create room', error);
+    res.status(500).json({ message: 'Failed to create room' });
+  }
 }
 
 export async function updateRoom(req, res) {
