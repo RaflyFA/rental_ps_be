@@ -95,20 +95,40 @@ export async function updateRoom(req, res) {
   }
 }
 
-
-
 export async function deleteRoom(req, res) {
-	try {
-		const id = Number(req.params.id);
-		await prisma.room.delete({ where: { id_room: id } });
-		res.json({ message: 'Room deleted' });
-	} catch (error) {
-		if (error.code === 'P2025') {
-			return res.status(404).json({ message: 'Room not found' });
-		}
-		console.error('Failed to delete room', error);
-		res.status(500).json({ message: 'Failed to delete room' });
-	}
+  try {
+    const id = parseInt(req.params.id);
+
+    // Hapus price_list
+    await prisma.price_list.deleteMany({
+      where: { id_room: id }
+    });
+
+    // Hapus reservation
+    await prisma.reservation.deleteMany({
+      where: { id_room: id }
+    });
+
+    // Hapus game_list (child dari unit)
+    await prisma.game_list.deleteMany({
+      where: { unit: { id_room: id } }
+    });
+
+    // Hapus unit
+    await prisma.unit.deleteMany({
+      where: { id_room: id }
+    });
+
+    // Terakhir hapus room
+    await prisma.room.delete({
+      where: { id_room: id }
+    });
+
+    res.json({ message: "Room deleted successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
 }
 
 function toNullableNumber(value) {
