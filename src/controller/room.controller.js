@@ -41,7 +41,7 @@ export async function createRoom(req, res) {
           },
         },
       },
-      include: { price_list: true }, // <-- pastikan include price_list
+      include: { price_list: true },
     });
 
     res.status(201).json(newRoom);
@@ -56,7 +56,6 @@ export async function updateRoom(req, res) {
   const { nama_room, tipe_room, kapasitas, harga } = req.body;
 
   try {
-    // Cek apakah room-nya ada
     const existingRoom = await prisma.room.findUnique({
       where: { id_room: id },
       include: { price_list: true },

@@ -13,6 +13,7 @@ import authRouter from './route/auth.route.js';
 import gamesRouter from './route/games.route.js';
 import unitRouter from './route/unit.route.js';
 import { sessionMiddleware } from './config/session.js';
+import userRouter from './route/user.route.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000; // WAJIB pakai process.env.PORT
@@ -47,6 +48,7 @@ apiRouter.use('/foods', foodListRouter);
 apiRouter.use('/order-foods', orderFoodRouter);
 apiRouter.use('/games', gamesRouter);
 apiRouter.use('/unit', unitRouter);
+apiRouter.use('/user', userRouter);
 
 
 app.use('/api', apiRouter);
