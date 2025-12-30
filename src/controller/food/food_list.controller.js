@@ -12,7 +12,6 @@ export async function getFoods(req, res) {
       ? {
           nama_makanan: {
             contains: search,
-            mode: 'insensitive',
           },
         }
       : {};

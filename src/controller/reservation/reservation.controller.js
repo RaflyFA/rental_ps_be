@@ -4,7 +4,7 @@ import prisma from '../../config/prisma.js';
 const defaultPrice = `7000`
 
 function shapeReservation(record) {
-  console.log('shapeReservation record', record);
+  // console.log('shapeReservation record', record); // Optional: matikan log biar bersih
   if (!record) return null;
 
   return {
@@ -18,10 +18,12 @@ function shapeReservation(record) {
     waktu_selesai: record.waktu_selesai,
     durasi: record.durasi,
     total_harga: record.total_harga,
-    payment_status: record.payment?.id_payment ? true : false,
+    // Cek status bayar berdasarkan keberadaan relasi payment
+    payment_status: record.payment?.id_payment ? "PAID" : "UNPAID",
     payment_method: record.payment?.payment_method ?? null,
   };
 }
+
 function shapeOrderFood(row) {
   return {
     id_order: row.id_order,
@@ -37,36 +39,88 @@ function shapeOrderFood(row) {
       : null,
   };
 }
+
+// ==========================================
+// 1. LIST RESERVATIONS (UPDATED FOR PAGINATION)
+// ==========================================
 export async function listReservations(req, res) {
   try {
-    const { date } = req.query;
-    const where = {};
+    const { date, page, limit, unpaid } = req.query;
+
+    // --- SKENARIO 1: MODE TIMELINE (Berdasarkan Tanggal) ---
+    // Digunakan untuk tampilan Grid/Timeline di Dashboard/Reservation utama
+    // Return: Array of Objects
     if (date) {
-      const normalizedDate = date.includes('T') ? date.split('T')[0] : date;
-      const start = `${date}`
-      const end = new Date(`${normalizedDate}T23:59:59.999`);
-      // if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      //   return res.status(400).json({ message: 'Format tanggal tidak valid (gunakan YYYY-MM-DD)' });
-      // }
+      const where = {};
       where.tanggal_reservasi = date;
+
+      const records = await prisma.reservation.findMany({
+        where,
+        include: {
+          customer: { select: { nama: true } },
+          room: { select: { nama_room: true } },
+          payment: true, // Include payment untuk cek status
+        },
+        orderBy: [
+          { waktu_mulai: 'asc' },
+          { id_reservation: 'asc' },
+        ],
+      });
+      
+      // Langsung return array (Logic lama)
+      return res.json(records.map(shapeReservation));
     }
-    const records = await prisma.reservation.findMany({
-      where,
-      include: {
-        customer: { select: { nama: true } },
-        room: { select: { nama_room: true } },
-        payment : true,
-      },
-      orderBy: [
-        { waktu_mulai: 'asc' },
-        { id_reservation: 'asc' },
-      ],
+
+    // --- SKENARIO 2: MODE HISTORY (Pagination & Filter) ---
+    // Digunakan untuk tab "History" dan "Unpaid Only"
+    // Return: { data: [], pagination: {} }
+    const pageNum = Number(page) || 1;
+    const limitNum = Number(limit) || 10;
+    const skip = (pageNum - 1) * limitNum;
+
+    const where = {};
+
+    // Filter Unpaid: Cari yang payment_id-nya NULL
+    if (unpaid === 'true') {
+      where.payment_id = null;
+    }
+
+    // Gunakan Transaction untuk efisiensi (Hitung Total & Ambil Data sekaligus)
+    const [total, records] = await prisma.$transaction([
+      prisma.reservation.count({ where }),
+      prisma.reservation.findMany({
+        where,
+        include: {
+          customer: { select: { nama: true } },
+          room: { select: { nama_room: true } },
+          payment: true,
+        },
+        orderBy: { id_reservation: 'desc' }, // Urutkan dari yang paling baru
+        skip: skip,
+        take: limitNum,
+      }),
+    ]);
+
+    // Return format Object dengan metadata pagination
+    res.json({
+      data: records.map(shapeReservation),
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum)
+      }
     });
-    res.json(records.map(shapeReservation));
+
   } catch (error) {
     console.error('Failed to list reservations', error);
     res.status(500).json({ message: 'Failed to list reservations' });
-}}
+  }
+}
+
+// ==========================================
+// 2. GET DETAIL
+// ==========================================
 export async function getReservationDetail(req, res) {
   try {
     const id = Number(req.params.id);
@@ -78,6 +132,7 @@ export async function getReservationDetail(req, res) {
       include: {
         customer: { select: { nama: true } },
         room: { select: { nama_room: true } },
+        payment: true, // Pastikan payment di-include juga disini
       },
     });
     if (!record) {
@@ -87,7 +142,12 @@ export async function getReservationDetail(req, res) {
   } catch (error) {
     console.error('Failed to fetch reservation detail', error);
     res.status(500).json({ message: 'Failed to fetch reservation detail' });
-}}
+  }
+}
+
+// ==========================================
+// 3. GET WITH ORDERS
+// ==========================================
 export async function getReservationWithOrders(req, res) {
   try {
     const id = Number(req.params.id);
@@ -99,6 +159,7 @@ export async function getReservationWithOrders(req, res) {
       include: {
         customer: { select: { nama: true } },
         room: { select: { nama_room: true } },
+        payment: true,
         order_food: {
           include: {
             food_list: true,
@@ -118,7 +179,10 @@ export async function getReservationWithOrders(req, res) {
   } catch (error) {
     console.error('Failed to fetch reservation with orders', error);
     res.status(500).json({ message: 'Failed to fetch reservation with orders' });
-}}
+  }
+}
+
+// Helpers untuk Create/Update
 function buildDateTime(dateStr, timeStr) {
   const dt = moment(`${dateStr} ${timeStr}`, 'YYYY-MM-DD HH:mm', true);
   if (!dt.isValid()) {
@@ -130,6 +194,7 @@ function buildDateTime(dateStr, timeStr) {
 function toUTCDatePreservingLocalInput(momentObj) {
   return new Date(momentObj.valueOf() + momentObj.utcOffset() * 60 * 1000);
 }
+
 async function resolveCustomerId({ customer_id, customer_name }) {
   let cid = customer_id ? Number(customer_id) : null;
   if (Number.isFinite(cid)) return cid;
@@ -146,6 +211,7 @@ async function resolveCustomerId({ customer_id, customer_name }) {
   }
   return null;
 }
+
 async function resolveRoomId({ room_id, nama_room }) {
   let rid = room_id ? Number(room_id) : null;
   if (Number.isFinite(rid)) return rid;
@@ -162,6 +228,7 @@ async function resolveRoomId({ room_id, nama_room }) {
 
   throw new Error('ROOM_REQUIRED');
 }
+
 async function getPricePerHourForRoom(roomId) {
   const priceRow = await prisma.price_list.findFirst({
     where: { id_room: roomId },
@@ -171,6 +238,10 @@ async function getPricePerHourForRoom(roomId) {
   }
   return Number(priceRow.harga_per_jam);
 }
+
+// ==========================================
+// 4. CREATE RESERVATION
+// ==========================================
 export async function createReservation(req, res) {
   try {
     const {
@@ -217,11 +288,11 @@ export async function createReservation(req, res) {
         .status(400)
         .json({ message: 'Format date/time tidak valid (YYYY-MM-DD & HH:mm)' });
     }
-    console.log('startMoment', moment(startMoment, "YYYY-MM-DD", true).format("YYYY-MM-DD"))
+    // console.log('startMoment', moment(startMoment, "YYYY-MM-DD", true).format("YYYY-MM-DD"))
     const endMoment = startMoment.clone().add(durasiJam, 'hours');
     const start = startMoment.format("YYYY-MM-DD HH:mm:ss");
     const end = endMoment.format("YYYY-MM-DD HH:mm:ss");
-    console.log('start', moment(date, "YYYY-MM-DD", true).format("YYYY-MM-DD"))
+    // console.log('start', moment(date, "YYYY-MM-DD", true).format("YYYY-MM-DD"))
     const pricePerHour = await getPricePerHourForRoom(rid);
     const record = await prisma.reservation.create({
       data: {
@@ -236,6 +307,7 @@ export async function createReservation(req, res) {
       include: {
         customer: { select: { nama: true } },
         room: { select: { nama_room: true } },
+        payment: true,
       },
     });
     res.status(201).json(shapeReservation(record));
@@ -247,6 +319,10 @@ export async function createReservation(req, res) {
     res.status(500).json({ message: 'Failed to create reservation' });
   }
 }
+
+// ==========================================
+// 5. UPDATE RESERVATION
+// ==========================================
 export async function updateReservation(req, res) {
   try {
     const id = Number(req.params.id);
@@ -300,6 +376,7 @@ export async function updateReservation(req, res) {
     const start = toUTCDatePreservingLocalInput(startMoment);
     const end = toUTCDatePreservingLocalInput(endMoment);
     const pricePerHour = await getPricePerHourForRoom(rid);
+    
     const record = await prisma.reservation.update({
       where: { id_reservation: id },
       data: {
@@ -309,12 +386,14 @@ export async function updateReservation(req, res) {
         waktu_selesai: end,
         durasi: durasiJam,
         total_harga: durasiJam * pricePerHour,
-        payment_status: payment_status ?? undefined,
-        payment_method: payment_method ?? undefined,
+        // payment_status & payment_method di model user sepertinya tidak dipakai langsung 
+        // karena status diambil dari relasi tabel Payment.
+        // Tapi jika ada kolom legacy, bisa dibiarkan.
       },
       include: {
         customer: { select: { nama: true } },
         room: { select: { nama_room: true } },
+        payment: true,
       },
     });
     res.json(shapeReservation(record));
@@ -326,6 +405,10 @@ export async function updateReservation(req, res) {
     res.status(500).json({ message: 'Failed to update reservation' });
   }
 }
+
+// ==========================================
+// 6. DELETE RESERVATION
+// ==========================================
 export async function deleteReservation(req, res) {
   try {
     const id = Number(req.params.id);
@@ -342,8 +425,12 @@ export async function deleteReservation(req, res) {
       return res.status(404).json({ message: 'Reservation not found' });
     }
     res.status(500).json({ message: 'Failed to delete reservation' });
-}}
+  }
+}
 
+// ==========================================
+// 7. PAY RESERVATION (Create Payment Record)
+// ==========================================
 export const payReservation = async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -355,15 +442,21 @@ export const payReservation = async (req, res) => {
     if (!reservation) {
       return res.status(404).json({ message: 'Reservation not found' });
     }
+    
+    if (reservation.payment_id) {
+      return res.status(400).json({ message: 'Reservasi ini sudah lunas!' });
+    }
 
+    // 1. Buat record di tabel Payment
     const paymentRecord = await prisma.payment.create({
       data: {
         total_bayar: reservation.total_harga,
         tanggal_bayar: moment().format("YYYY-MM-DD"), 
-        payment_method: "CASH",
+        payment_method: "CASH", // Default Cash, bisa diambil dari req.body jika mau dinamis
       }
     });
 
+    // 2. Update Reservation untuk link ke Payment ID
     const updatedReservation = await prisma.reservation.update({
       where: {
         id_reservation: id,
@@ -386,4 +479,3 @@ export const payReservation = async (req, res) => {
     return res.status(500).json({ message: 'Failed to process payment' });
   }
 };
-
