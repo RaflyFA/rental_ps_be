@@ -2,13 +2,41 @@ import prisma from "../../config/prisma.js";
 
 export async function getUnits(req, res) {
   try {
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+    const search = req.query.search || "";
+    const skip = (page - 1) * limit;
+    const where = search
+      ? {
+          OR: [
+            { nama_unit: { contains: search } },
+            { deskripsi: { contains: search } },
+            { room: { nama_room: { contains: search } } } 
+          ],
+        }
+      : {};
+    const total = await prisma.unit.count({ where });
     const units = await prisma.unit.findMany({
+      where,
       orderBy: { id_unit: "asc" },
+      skip: skip,
+      take: limit,
       include: {
         room: true, 
       },
     });
-    res.json(units);
+
+    const totalPages = Math.ceil(total / limit);
+    res.json({
+      data: units,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: totalPages || 1,
+      },
+    });
+
   } catch (error) {
     console.error("Failed to fetch unit list", error);
     res.status(500).json({ message: "Failed to fetch unit list" });

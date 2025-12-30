@@ -14,14 +14,23 @@ export async function getGames(req, res) {
   try {
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 5;
+    const search = req.query.search || "";
 
     const skip = (page - 1) * limit;
 
-    // Hitung total data
-    const total = await prisma.game_list.count();
+    const where = search
+      ? {
+          nama_game: {
+            contains: search,
+          },
+        }
+      : {};
+
+    const total = await prisma.game_list.count({ where });
 
     // Ambil data berdasarkan pagination
     const games = await prisma.game_list.findMany({
+      where,
       orderBy: { id_game: "asc" },
       skip: skip,
       take: limit,

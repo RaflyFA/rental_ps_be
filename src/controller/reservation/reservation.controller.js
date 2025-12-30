@@ -19,7 +19,7 @@ function shapeReservation(record) {
     durasi: record.durasi,
     total_harga: record.total_harga,
     // Cek status bayar berdasarkan keberadaan relasi payment
-    payment_status: record.payment?.id_payment ? "PAID" : "UNPAID",
+    payment_status: record.payment?.id_payment ? "LUNAS" : "BELUM DIBAYAR",
     payment_method: record.payment?.payment_method ?? null,
   };
 }
@@ -442,7 +442,7 @@ export const payReservation = async (req, res) => {
     if (!reservation) {
       return res.status(404).json({ message: 'Reservation not found' });
     }
-    
+
     if (reservation.payment_id) {
       return res.status(400).json({ message: 'Reservasi ini sudah lunas!' });
     }
