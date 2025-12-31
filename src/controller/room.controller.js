@@ -2,9 +2,47 @@ import prisma from '../config/prisma.js';
 
 export async function getRooms(req, res) {
 	try {
-		const records = await prisma.room.findMany({ orderBy: { id_room: 'asc' } });
-		
-		return res.status(200).json(records);
+		const fetchAll = req.query.all === "true";
+		const search = (req.query.search || "").trim();
+		const page = Math.max(1, Number(req.query.page) || 1);
+		const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 10));
+		const skip = (page - 1) * limit;
+		const where = search
+			? {
+					OR: [
+						{ nama_room: { contains: search } },
+						{ tipe_room: { contains: search } },
+					],
+				}
+			: {};
+
+		if (fetchAll) {
+			const records = await prisma.room.findMany({
+				where,
+				orderBy: { id_room: "asc" },
+			});
+			return res.status(200).json(records);
+		}
+
+		const [records, total] = await Promise.all([
+			prisma.room.findMany({
+				where,
+				orderBy: { id_room: "asc" },
+				skip,
+				take: limit,
+			}),
+			prisma.room.count({ where }),
+		]);
+
+		return res.status(200).json({
+			data: records,
+			meta: {
+				page,
+				limit,
+				total,
+				totalPages: Math.max(1, Math.ceil(total / limit)),
+			},
+		});
 	} catch (error) {
 		console.error('Failed to fetch rooms list', error);
 		return res.status(500).json({ message: 'Failed to fetch rooms list' });
@@ -146,23 +184,64 @@ function toNullableNumber(value) {
 
 export const getRoomsWithPrice = async (req, res) => {
   try {
-    const rooms = await prisma.room.findMany({
-      select: {
-        id_room: true,
-        nama_room: true,
-        tipe_room: true,
-        kapasitas: true,
-        price_list: {
-          select: {
-            harga_per_jam: true,
-          },
+    const fetchAll = req.query.all === "true";
+    const search = (req.query.search || "").trim();
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 10));
+    const skip = (page - 1) * limit;
+    const where = search
+      ? {
+          OR: [
+            { nama_room: { contains: search } },
+            { tipe_room: { contains: search } },
+          ],
+        }
+      : {};
+
+    const select = {
+      id_room: true,
+      nama_room: true,
+      tipe_room: true,
+      kapasitas: true,
+      price_list: {
+        select: {
+          harga_per_jam: true,
         },
       },
-    });
+    };
+
+    if (fetchAll) {
+      const rooms = await prisma.room.findMany({
+        where,
+        select,
+        orderBy: { id_room: "asc" },
+      });
+      return res.status(200).json({
+        message: "Data room berhasil diambil",
+        data: rooms,
+      });
+    }
+
+    const [rooms, total] = await Promise.all([
+      prisma.room.findMany({
+        where,
+        select,
+        orderBy: { id_room: "asc" },
+        skip,
+        take: limit,
+      }),
+      prisma.room.count({ where }),
+    ]);
 
     res.status(200).json({
       message: "Data room berhasil diambil",
       data: rooms,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
     });
   } catch (error) {
     console.error("Failed to get rooms with price", error);

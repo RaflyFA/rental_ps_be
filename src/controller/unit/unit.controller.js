@@ -121,13 +121,41 @@ export async function deleteUnit(req, res) {
 export async function getUnitGames(req, res) {
   try {
     const { id } = req.params;
-    const installed = await prisma.unitGame.findMany({
-      where: { id_unit: Number(id) },
-      include: {
-        game: true,
+    const fetchAll = req.query.all === "true";
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 10));
+    const skip = (page - 1) * limit;
+    const where = { id_unit: Number(id) };
+
+    if (fetchAll) {
+      const installed = await prisma.unitGame.findMany({
+        where,
+        include: { game: true },
+        orderBy: { id_install: "asc" },
+      });
+      return res.json(installed);
+    }
+
+    const [installed, total] = await Promise.all([
+      prisma.unitGame.findMany({
+        where,
+        include: { game: true },
+        orderBy: { id_install: "asc" },
+        skip,
+        take: limit,
+      }),
+      prisma.unitGame.count({ where }),
+    ]);
+
+    res.json({
+      data: installed,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
       },
     });
-    res.json(installed);
   } catch (error) {
     res.status(500).json({ message: "Error fetching unit games" });
   }

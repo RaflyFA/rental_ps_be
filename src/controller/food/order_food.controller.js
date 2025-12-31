@@ -63,16 +63,41 @@ export async function getOrderFoodByReservation(req, res) {
     if (Number.isNaN(reservationId)) {
       return res.status(400).json({ message: "reservationId harus angka" });
     }
+    const fetchAll = req.query.all === "true";
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 10));
+    const skip = (page - 1) * limit;
+    const where = { reservation_id: reservationId };
 
-    const rows = await prisma.order_food.findMany({
-      where: { reservation_id: reservationId },
-      include: {
-        food_list: true,
+    if (fetchAll) {
+      const rows = await prisma.order_food.findMany({
+        where,
+        include: { food_list: true },
+        orderBy: { id_order: "asc" },
+      });
+      return res.json(rows);
+    }
+
+    const [rows, total] = await Promise.all([
+      prisma.order_food.findMany({
+        where,
+        include: { food_list: true },
+        orderBy: { id_order: "asc" },
+        skip,
+        take: limit,
+      }),
+      prisma.order_food.count({ where }),
+    ]);
+
+    res.json({
+      data: rows,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
       },
-      orderBy: { id_order: "asc" },
     });
-
-    res.json(rows);
   } catch (error) {
     console.error("Failed to fetch order_food", error);
     res.status(500).json({ message: "Failed to fetch order_food" });

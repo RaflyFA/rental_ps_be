@@ -1,5 +1,6 @@
 import moment from 'moment';
 import prisma from '../../config/prisma.js';
+import { verifyToken } from '../../utils/jwt.js';
 
 const defaultPrice = `7000`
 
@@ -41,6 +42,45 @@ function shapeReservation(record) {
     
     payment_method: record.payment?.payment_method ?? null,
   };
+}
+
+function getUserIdFromRequest(req) {
+  if (req.user?.userId) return req.user.userId;
+  const token = req.cookies?.access_token ?? req.session?.token;
+  if (!token) return null;
+  try {
+    const payload = verifyToken(token);
+    return payload?.userId ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function parseMoment(value) {
+  if (!value) return null;
+  const parsed = moment(value);
+  return parsed.isValid() ? parsed : null;
+}
+
+async function hasRoomOverlap({ roomId, start, end, excludeId = null }) {
+  const records = await prisma.reservation.findMany({
+    where: {
+      id_room: roomId,
+      ...(excludeId ? { id_reservation: { not: excludeId } } : {}),
+    },
+    select: {
+      id_reservation: true,
+      waktu_mulai: true,
+      waktu_selesai: true,
+    },
+  });
+
+  return records.some((record) => {
+    const existingStart = parseMoment(record.waktu_mulai);
+    const existingEnd = parseMoment(record.waktu_selesai);
+    if (!existingStart || !existingEnd) return false;
+    return start.isBefore(existingEnd) && end.isAfter(existingStart);
+  });
 }
 
 function shapeOrderFood(row) {
@@ -99,9 +139,71 @@ export async function listReservations(req, res) {
 
     const where = {};
 
-    // Filter Unpaid: Cari yang payment_id-nya NULL
     if (unpaid === 'true') {
-      where.payment = null;
+      const countRows = await prisma.$queryRaw`
+        SELECT COUNT(*) AS count
+        FROM \`reservation\` r
+        LEFT JOIN \`payment\` p ON p.reservation_id = r.id_reservation
+        WHERE p.id_payment IS NULL OR p.total_bayar < r.total_harga
+      `;
+      const total = Number(countRows?.[0]?.count ?? 0);
+
+      const idRows = await prisma.$queryRaw`
+        SELECT r.id_reservation AS id
+        FROM \`reservation\` r
+        LEFT JOIN \`payment\` p ON p.reservation_id = r.id_reservation
+        WHERE p.id_payment IS NULL OR p.total_bayar < r.total_harga
+        ORDER BY r.id_reservation DESC
+        LIMIT ${limitNum} OFFSET ${skip}
+      `;
+      const ids = idRows.map((row) => Number(row.id)).filter((id) => Number.isFinite(id));
+
+      if (ids.length === 0) {
+        return res.json({
+          data: [],
+          pagination: {
+            total,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: Math.ceil(total / limitNum),
+          },
+          meta: {
+            total,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: Math.ceil(total / limitNum),
+          },
+        });
+      }
+
+      const records = await prisma.reservation.findMany({
+        where: { id_reservation: { in: ids } },
+        include: {
+          customer: { select: { nama: true } },
+          room: { select: { nama_room: true } },
+          payment: true,
+        },
+      });
+      const orderMap = new Map(ids.map((id, index) => [id, index]));
+      records.sort(
+        (a, b) => (orderMap.get(a.id_reservation) ?? 0) - (orderMap.get(b.id_reservation) ?? 0),
+      );
+
+      return res.json({
+        data: records.map(shapeReservation),
+        pagination: {
+          total,
+          page: pageNum,
+          limit: limitNum,
+          totalPages: Math.ceil(total / limitNum),
+        },
+        meta: {
+          total,
+          page: pageNum,
+          limit: limitNum,
+          totalPages: Math.ceil(total / limitNum),
+        },
+      });
     }
 
     // Gunakan Transaction untuk efisiensi (Hitung Total & Ambil Data sekaligus)
@@ -128,7 +230,13 @@ export async function listReservations(req, res) {
         page: pageNum,
         limit: limitNum,
         totalPages: Math.ceil(total / limitNum)
-      }
+      },
+      meta: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+      },
     });
 
   } catch (error) {
@@ -309,10 +417,28 @@ export async function createReservation(req, res) {
     }
     // console.log('startMoment', moment(startMoment, "YYYY-MM-DD", true).format("YYYY-MM-DD"))
     const endMoment = startMoment.clone().add(durasiJam, 'hours');
+    const allowPast = req.body?.allow_past === true;
+    if (!allowPast && startMoment.isBefore(moment().subtract(5, 'minutes'))) {
+      return res.status(400).json({
+        message: 'Waktu reservasi sudah lewat. Pilih waktu lain.',
+      });
+    }
     const start = startMoment.format("YYYY-MM-DD HH:mm:ss");
     const end = endMoment.format("YYYY-MM-DD HH:mm:ss");
     // console.log('start', moment(date, "YYYY-MM-DD", true).format("YYYY-MM-DD"))
     const pricePerHour = await getPricePerHourForRoom(rid);
+    const overlap = await hasRoomOverlap({
+      roomId: rid,
+      start: startMoment,
+      end: endMoment,
+    });
+    if (overlap) {
+      return res.status(409).json({
+        message: 'Ruangan sudah dipakai di jam tersebut. Pilih waktu lain.',
+      });
+    }
+
+    const handledBy = getUserIdFromRequest(req);
     const record = await prisma.reservation.create({
       data: {
         customer_id: cid,
@@ -322,6 +448,7 @@ export async function createReservation(req, res) {
         durasi: durasiJam,
         tanggal_reservasi : date,
         total_harga: durasiJam * pricePerHour,
+        handled_by: handledBy,
       },
       include: {
         customer: { select: { nama: true } },
@@ -392,10 +519,29 @@ export async function updateReservation(req, res) {
         .json({ message: 'Format date/time tidak valid (YYYY-MM-DD & HH:mm)' });
     }
     const endMoment = startMoment.clone().add(durasiJam, 'hours');
-    const start = toUTCDatePreservingLocalInput(startMoment);
-    const end = toUTCDatePreservingLocalInput(endMoment);
+    const allowPast = req.body?.allow_past === true;
+    if (!allowPast && startMoment.isBefore(moment().subtract(5, 'minutes'))) {
+      return res.status(400).json({
+        message: 'Waktu reservasi sudah lewat. Pilih waktu lain.',
+      });
+    }
+    const start = startMoment.format("YYYY-MM-DD HH:mm:ss");
+    const end = endMoment.format("YYYY-MM-DD HH:mm:ss");
     const pricePerHour = await getPricePerHourForRoom(rid);
     
+    const overlap = await hasRoomOverlap({
+      roomId: rid,
+      start: startMoment,
+      end: endMoment,
+      excludeId: id,
+    });
+    if (overlap) {
+      return res.status(409).json({
+        message: 'Ruangan sudah dipakai di jam tersebut. Pilih waktu lain.',
+      });
+    }
+
+    const handledBy = getUserIdFromRequest(req);
     const record = await prisma.reservation.update({
       where: { id_reservation: id },
       data: {
@@ -405,6 +551,7 @@ export async function updateReservation(req, res) {
         waktu_selesai: end,
         durasi: durasiJam,
         total_harga: durasiJam * pricePerHour,
+        ...(handledBy ? { handled_by: handledBy } : {}),
         // payment_status & payment_method di model user sepertinya tidak dipakai langsung 
         // karena status diambil dari relasi tabel Payment.
         // Tapi jika ada kolom legacy, bisa dibiarkan.

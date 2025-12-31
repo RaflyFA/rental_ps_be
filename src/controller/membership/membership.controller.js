@@ -2,8 +2,44 @@ import prisma from '../../config/prisma.js';
 
 export async function getMemberships(req, res) {
   try {
-    const records = await prisma.membership.findMany({ orderBy: { id_membership: 'asc' } });
-    res.json(records);
+    const fetchAll = req.query.all === "true";
+    const search = (req.query.search || "").trim();
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 10));
+    const skip = (page - 1) * limit;
+    const where = search
+      ? {
+          nama_tier: { contains: search },
+        }
+      : {};
+
+    if (fetchAll) {
+      const records = await prisma.membership.findMany({
+        where,
+        orderBy: { id_membership: "asc" },
+      });
+      return res.json(records);
+    }
+
+    const [records, total] = await Promise.all([
+      prisma.membership.findMany({
+        where,
+        orderBy: { id_membership: "asc" },
+        skip,
+        take: limit,
+      }),
+      prisma.membership.count({ where }),
+    ]);
+
+    res.json({
+      data: records,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    });
   } catch (error) {
     console.error('Failed to fetch membership list', error);
     res.status(500).json({ message: 'Failed to fetch membership list' });

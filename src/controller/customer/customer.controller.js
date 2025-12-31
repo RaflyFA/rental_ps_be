@@ -51,8 +51,18 @@ const parseMembershipId = (value) => {
 export async function getCustomers(req, res) {
   try {
     const fetchAll = req.query.all === 'true';
+    const search = (req.query.search || '').trim();
+    const where = search
+      ? {
+          OR: [
+            { nama: { contains: search } },
+            { no_hp: { contains: search } },
+          ],
+        }
+      : {};
     if (fetchAll) {
       const records = await prisma.customer.findMany({
+        where,
         orderBy: { id_customer: 'asc' },
         include: customerInclude,
       });
@@ -66,18 +76,25 @@ export async function getCustomers(req, res) {
           totalPages: 1,
           hasNextPage: false,
         },
+        meta: {
+          page: 1,
+          limit: shaped.length,
+          total: shaped.length,
+          totalPages: 1,
+        },
       });
     }
     const page = Math.max(1, Number.parseInt(req.query.page ?? '1', 10) || 1);
     const skip = (page - 1) * PAGE_SIZE;
     const [records, totalItems] = await Promise.all([
       prisma.customer.findMany({
+        where,
         skip,
         take: PAGE_SIZE,
         orderBy: { id_customer: 'asc' },
         include: customerInclude,
       }),
-      prisma.customer.count(),
+      prisma.customer.count({ where }),
     ]);
     const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
     res.json({
@@ -88,6 +105,12 @@ export async function getCustomers(req, res) {
         totalItems,
         totalPages,
         hasNextPage: skip + records.length < totalItems,
+      },
+      meta: {
+        page,
+        limit: PAGE_SIZE,
+        total: totalItems,
+        totalPages,
       },
     });
   } catch (error) {
