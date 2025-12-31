@@ -21,7 +21,7 @@ export async function getStats(req, res) {
         total_harga: true,
       },
       where: {
-        payment_id: { not: null } // Only count paid transactions
+        payment: { isNot: null } // Only count paid transactions
       }
     });
 
@@ -41,11 +41,25 @@ export async function getStats(req, res) {
 
     // 4. Pending Issues (e.g., Unpaid Reservations)
     // We count reservations that have passed (or exist) but have NO payment_id
-    const pendingIssues = await prisma.reservation.count({
-      where: {
-        payment_id: null
-      }
+    const unpaidReservations = await prisma.reservation.findMany({
+      select: {
+        total_harga: true,
+        payment: {
+          select: {
+            total_bayar: true,
+          },
+        },
+      },
     });
+
+    const pendingIssues = unpaidReservations.reduce((count, item) => {
+      const totalBill = Number(item.total_harga || 0);
+      const totalPaid = Number(item.payment?.total_bayar || 0);
+      if (!item.payment || totalPaid < totalBill) {
+        return count + 1;
+      }
+      return count;
+    }, 0);
 
     res.json({
       revenue: `Rp ${Number(revenueAgg._sum.total_harga || 0).toLocaleString('id-ID')}`,
@@ -83,7 +97,7 @@ export async function getRecentActivity(req, res) {
     const formattedData = recent.map((item) => {
         // Determine status based on payment existence
         let status = "Booked";
-        if (item.payment_id) status = "Finished"; // Or "Active" depending on logic
+        if (item.payment) status = "Finished"; // Or "Active" depending on logic
         
         return {
             id: item.id_reservation,

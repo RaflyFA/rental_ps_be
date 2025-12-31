@@ -38,19 +38,16 @@ model food_list {
 model game_list {
   id_game   Int    @id @default(autoincrement())
   nama_game String @db.VarChar(255)
-  id_unit   Int
-  unit      unit   @relation(fields: [id_unit], references: [id_unit], onDelete: NoAction, onUpdate: NoAction, map: "game_list_ibfk_1")
-
-  @@index([id_unit], map: "id_unit")
+  installed_on UnitGame[]
 }
 
 model order_food {
   id_order       Int         @id @default(autoincrement())
   food_id        Int
-  jumlah         Int?
+  jumlah         Int
   reservation_id Int
   food_list      food_list   @relation(fields: [food_id], references: [id_food], onDelete: NoAction, onUpdate: NoAction, map: "order_food_ibfk_1")
-  reservation    reservation @relation(fields: [reservation_id], references: [id_reservation], onDelete: NoAction, onUpdate: NoAction, map: "order_food_ibfk_2")
+  reservation    reservation @relation(fields: [reservation_id], references: [id_reservation], onDelete: Cascade, onUpdate: NoAction, map: "order_food_ibfk_2")
 
   @@index([food_id], map: "food_id")
   @@index([reservation_id], map: "reservation_id")
@@ -58,10 +55,11 @@ model order_food {
 
 model payment {
   id_payment     Int           @id @default(autoincrement())
-  tanggal_bayar  String         
+  tanggal_bayar  DateTime     @default(now())         
   total_bayar    Decimal       @db.Decimal(10, 2)
   payment_method String        @db.VarChar(255)
-  reservation    reservation[]
+  reservation_id Int           @unique 
+  reservation    reservation   @relation(fields: [reservation_id], references: [id_reservation], onDelete: Cascade)
 }
 
 model price_list {
@@ -79,22 +77,20 @@ model reservation {
   durasi            Int
   total_harga       Decimal      @db.Decimal(10, 2)
   customer_id       Int
-  payment_id        Int?
   tanggal_reservasi String      
   waktu_mulai       String     
   waktu_selesai     String      
   id_room           Int
   handled_by        Int?
   order_food        order_food[]
+  payment           payment?
   user              user?        @relation(fields: [handled_by], references: [id_user], onDelete: NoAction, onUpdate: NoAction, map: "fk_reservation_user")
   customer          customer     @relation(fields: [customer_id], references: [id_customer], onDelete: NoAction, onUpdate: NoAction, map: "reservation_ibfk_1")
-  payment           payment?     @relation(fields: [payment_id], references: [id_payment], onDelete: Cascade, onUpdate: NoAction, map: "reservation_ibfk_2")
   room              room         @relation(fields: [id_room], references: [id_room], onDelete: NoAction, onUpdate: NoAction, map: "reservation_ibfk_3")
 
-  @@index([customer_id], map: "customer_id")
-  @@index([id_room], map: "id_room")
-  @@index([payment_id], map: "reservation_ibfk_2")
-  @@index([handled_by], map: "fk_reservation_user")
+  @@index([customer_id], map: "idx_res_customer")
+  @@index([id_room], map: "idx_res_room")
+  @@index([handled_by], map: "idx_res_user")
 }
 
 model room {
@@ -112,10 +108,19 @@ model unit {
   id_room   Int
   deskripsi String?     @db.Text
   nama_unit String?     @db.VarChar(255)
-  game_list game_list[]
+  installed_games UnitGame[]
   room      room        @relation(fields: [id_room], references: [id_room], onDelete: NoAction, onUpdate: NoAction, map: "unit_ibfk_1")
-
   @@index([id_room], map: "id_room")
+}
+
+model UnitGame {
+  id_install Int @id @default(autoincrement())
+  id_unit    Int
+  unit       unit @relation(fields: [id_unit], references: [id_unit], onDelete: Cascade)
+  id_game    Int
+  game       game_list @relation(fields: [id_game], references: [id_game], onDelete: Cascade)
+
+  @@map("unit_game") // Nama tabel di database nanti jadi 'unit_game'
 }
 
 model user {

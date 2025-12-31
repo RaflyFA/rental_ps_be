@@ -4,8 +4,25 @@ import prisma from '../../config/prisma.js';
 const defaultPrice = `7000`
 
 function shapeReservation(record) {
-  // console.log('shapeReservation record', record); // Optional: matikan log biar bersih
+  // console.log('shapeReservation record', record);
   if (!record) return null;
+
+  // 1. Convert values to Numbers to ensure math works correctly
+  // (Prisma sometimes returns Decimals as objects or strings)
+  const totalBill = Number(record.total_harga || 0);
+  const totalPaid = Number(record.payment?.total_bayar || 0);
+  const hasPaymentRecord = !!record.payment;
+
+  // 2. Determine Status Logic
+  let status = "BELUM DIBAYAR"; // Default: No payment record
+
+  if (hasPaymentRecord) {
+    if (totalPaid >= totalBill) {
+      status = "LUNAS"; // Paid matches or exceeds bill
+    } else {
+      status = "BELUM LUNAS"; // Payment exists, but bill is higher (e.g., Budi ordered food)
+    }
+  }
 
   return {
     id_reservation: record.id_reservation,
@@ -18,8 +35,10 @@ function shapeReservation(record) {
     waktu_selesai: record.waktu_selesai,
     durasi: record.durasi,
     total_harga: record.total_harga,
-    // Cek status bayar berdasarkan keberadaan relasi payment
-    payment_status: record.payment?.id_payment ? "LUNAS" : "BELUM DIBAYAR",
+
+    // Use the calculated status
+    payment_status: status, 
+    
     payment_method: record.payment?.payment_method ?? null,
   };
 }
@@ -82,7 +101,7 @@ export async function listReservations(req, res) {
 
     // Filter Unpaid: Cari yang payment_id-nya NULL
     if (unpaid === 'true') {
-      where.payment_id = null;
+      where.payment = null;
     }
 
     // Gunakan Transaction untuk efisiensi (Hitung Total & Ambil Data sekaligus)
@@ -435,35 +454,58 @@ export const payReservation = async (req, res) => {
   try {
     const id = Number(req.params.id);
 
+    // 1. Get reservation with payment details
     const reservation = await prisma.reservation.findFirst({
-      where: { id_reservation: id }
+      where: { id_reservation: id },
+      include: { payment: true }
     });
 
     if (!reservation) {
       return res.status(404).json({ message: 'Reservation not found' });
     }
 
-    if (reservation.payment_id) {
-      return res.status(400).json({ message: 'Reservasi ini sudah lunas!' });
+    const totalTagihan = Number(reservation.total_harga);
+    
+    // 2. LOGIC FIX: Check if payment exists AND is fully paid
+    if (reservation.payment) {
+      const totalDibayar = Number(reservation.payment.total_bayar);
+      
+      // If already fully paid, reject
+      if (totalDibayar >= totalTagihan) {
+        return res.status(400).json({ message: 'Reservasi ini sudah lunas!' });
+      }
+
+      // 3. PARTIAL PAYMENT CASE: Update existing payment record to match new total
+      const updatedPayment = await prisma.payment.update({
+        where: { id_payment: reservation.payment.id_payment },
+        data: {
+          total_bayar: totalTagihan, // Update to full amount
+          tanggal_bayar: new Date(), // Update payment date to now
+        }
+      });
+
+      return res.status(200).json({
+        message: 'Pembayaran diperbarui (Pelunasan)',
+        data: {
+          payment: updatedPayment,
+          reservation: reservation
+        }
+      });
     }
 
-    // 1. Buat record di tabel Payment
+    // 4. NEW PAYMENT CASE: Create fresh record (Logic for guests who haven't paid anything)
     const paymentRecord = await prisma.payment.create({
       data: {
-        total_bayar: reservation.total_harga,
-        tanggal_bayar: moment().format("YYYY-MM-DD"), 
-        payment_method: "CASH", // Default Cash, bisa diambil dari req.body jika mau dinamis
+        total_bayar: totalTagihan,
+        payment_method: "CASH", 
+        reservation_id: id 
       }
     });
 
-    // 2. Update Reservation untuk link ke Payment ID
-    const updatedReservation = await prisma.reservation.update({
-      where: {
-        id_reservation: id,
-      },
-      data: {
-        payment_id: paymentRecord.id_payment,
-      }
+    // Fetch fresh data for response
+    const updatedReservation = await prisma.reservation.findUnique({
+        where: { id_reservation: id },
+        include: { payment: true }
     });
 
     return res.status(201).json({

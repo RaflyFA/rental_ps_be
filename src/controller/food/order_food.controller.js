@@ -9,27 +9,47 @@ export async function createOrderFood(req, res) {
         .status(400)
         .json({ message: "reservation_id dan items wajib diisi" });
     }
-
     const reservationIdNum = Number(reservation_id);
     if (Number.isNaN(reservationIdNum)) {
-      return res
-        .status(400)
-        .json({ message: "reservation_id harus angka" });
+      return res.status(400).json({ message: "reservation_id harus angka" });
     }
-
-    const data = items.map((item) => ({
-      reservation_id: reservationIdNum,
-      food_id: Number(item.food_id),
-      jumlah: Number(item.jumlah ?? 1),
-    }));
-
-    const result = await prisma.order_food.createMany({
-      data,
+    const foodIds = items.map((i) => Number(i.food_id));
+    const foodListDB = await prisma.food_list.findMany({
+      where: { id_food: { in: foodIds } },
     });
+    let totalHargaMakanan = 0;
+    const dataToInsert = [];
+    for (const item of items) {
+      const foodDB = foodListDB.find((f) => f.id_food === Number(item.food_id));
+      if (foodDB) {
+        const qty = Number(item.jumlah ?? 1);
+        const subtotal = Number(foodDB.harga) * qty;
+        totalHargaMakanan += subtotal;
 
+        dataToInsert.push({
+          reservation_id: reservationIdNum,
+          food_id: Number(item.food_id),
+          jumlah: qty,
+        });
+      }
+    }
+    const [createdOrders, updatedReservation] = await prisma.$transaction([
+      prisma.order_food.createMany({
+        data: dataToInsert,
+      }),
+      prisma.reservation.update({
+        where: { id_reservation: reservationIdNum },
+        data: {
+          total_harga: {
+            increment: totalHargaMakanan,
+          },
+        },
+      }),
+    ]);
     res.status(201).json({
-      message: "Order food berhasil dibuat",
-      count: result.count,
+      message: "Order food berhasil, total harga reservasi diperbarui",
+      added_cost: totalHargaMakanan,
+      count: createdOrders.count,
     });
   } catch (error) {
     console.error("Failed to create order_food", error);
