@@ -57,6 +57,7 @@ export async function getCustomers(req, res) {
           OR: [
             { nama: { contains: search } },
             { no_hp: { contains: search } },
+            { membership: { nama_tier: { contains: search } } },
           ],
         }
       : {};
@@ -85,30 +86,31 @@ export async function getCustomers(req, res) {
       });
     }
     const page = Math.max(1, Number.parseInt(req.query.page ?? '1', 10) || 1);
-    const skip = (page - 1) * PAGE_SIZE;
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit) || PAGE_SIZE));
+    const skip = (page - 1) * limit;
     const [records, totalItems] = await Promise.all([
       prisma.customer.findMany({
         where,
         skip,
-        take: PAGE_SIZE,
+        take: limit,
         orderBy: { id_customer: 'asc' },
         include: customerInclude,
       }),
       prisma.customer.count({ where }),
     ]);
-    const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+    const totalPages = Math.max(1, Math.ceil(totalItems / limit));
     res.json({
       data: records.map(shapeCustomer),
       pagination: {
         page,
-        pageSize: PAGE_SIZE,
+        pageSize: limit,
         totalItems,
         totalPages,
         hasNextPage: skip + records.length < totalItems,
       },
       meta: {
         page,
-        limit: PAGE_SIZE,
+        limit,
         total: totalItems,
         totalPages,
       },

@@ -7,11 +7,16 @@ export async function getRooms(req, res) {
 		const page = Math.max(1, Number(req.query.page) || 1);
 		const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 10));
 		const skip = (page - 1) * limit;
+		const normalizedSearch = search.toLowerCase();
+		const tipeRoom =
+			normalizedSearch === "vip" || normalizedSearch === "reguler"
+				? normalizedSearch
+				: null;
 		const where = search
 			? {
 					OR: [
 						{ nama_room: { contains: search } },
-						{ tipe_room: { contains: search } },
+						...(tipeRoom ? [{ tipe_room: tipeRoom }] : []),
 					],
 				}
 			: {};
@@ -189,11 +194,16 @@ export const getRoomsWithPrice = async (req, res) => {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 10));
     const skip = (page - 1) * limit;
+    const normalizedSearch = search.toLowerCase();
+    const tipeRoom =
+      normalizedSearch === "vip" || normalizedSearch === "reguler"
+        ? normalizedSearch
+        : null;
     const where = search
       ? {
           OR: [
             { nama_room: { contains: search } },
-            { tipe_room: { contains: search } },
+            ...(tipeRoom ? [{ tipe_room: tipeRoom }] : []),
           ],
         }
       : {};
